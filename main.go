@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 	"github.com/kataras/iris"
-	"a-list/server"
-	"a-list/transcoder"
+	"a-list-music/server"
+	"a-list-music/transcoder"
 	"os"
 )
 
@@ -24,7 +24,7 @@ func demoSoundTranscode(tclient transcoder.TranscoderClient) {
 	transcoded := make(chan map[string] transcoder.TranscodeJob)
 	tclient.ReadyTranscodes = readyJobs
 
-	if soundFile, err := os.Open("sound-files/demo-sound/18210__roil-noise__circuitbent-casio-ctk-550-loop1.wav"); err == nil {
+	if soundFile, err := os.Open("sound-files/sound-demo/gtr-nylon22.wav"); err == nil {
 
 		go tclient.NewJob(soundFile, "mp3")
 
@@ -55,6 +55,6 @@ func buildTranscoderClient() transcoder.TranscoderClient {
 func StartServer() {
 	fmt.Println("starting Server")
 	server := server.BuildServer()
-	server.Run(iris.Addr("localhost:2822"))
+	server.Run(iris.Addr("localhost:2820"))
 }
 

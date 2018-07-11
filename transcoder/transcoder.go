@@ -30,7 +30,7 @@ type Transcoder interface {
 	StoreToMediaLibrary()(SoundFileMeta, err error)
 	NewJob(file os.File, targetMime []string)
 	RunTranscodes(jobs map[string] TranscodeJob)
-	exitChan() chan error
+	ExitChan() chan error
 }
 
 type TranscodeJob struct {
@@ -42,10 +42,10 @@ type TranscodeJob struct {
 	ffmpegCMD *exec.Cmd
 }
 
-
 type TranscoderClient struct {
 	ReadyTranscodes chan map[string] TranscodeJob
 	Transcoded      chan map[string] TranscodeJob
+	exitChan 		chan error
 }
 
 //type TranscodesQueue struct {
@@ -157,7 +157,7 @@ func (c *TranscoderClient) RunTranscodes(jobs map[string] TranscodeJob) {
 		err := val.ffmpegCMD.Run()
 		if err != nil {
 			fmt.Println(err)
-			c.exitChan() <- err
+			c.exitChan <- err
 		}
 
 		fmt.Println("STDOUT", _out)
@@ -169,9 +169,10 @@ func (c *TranscoderClient) RunTranscodes(jobs map[string] TranscodeJob) {
 	close(c.Transcoded)
 }
 
-func (c *TranscoderClient) exitChan() chan error {
-	return c.exitChan()
+func (c TranscoderClient) ExitChan() chan error  {
+	return c.exitChan
 }
+
 
 func DetectEncoding(_file *os.File) (string, error) {
 	testBuffer := make([]byte, 512)
@@ -188,10 +189,15 @@ func DetectEncoding(_file *os.File) (string, error) {
 }
 
 func buildFFMPEGCMD(sourceMeta SoundFileMeta, targetEncode string) *exec.Cmd {
+	cwd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
 	switch strings.ToLower(targetEncode) {
 	case "mp3":
 		return exec.Command(
-			"ffmpeg",
+			cwd + "/../../../homebrew/bin/ffmpeg",
+
 			"-i",
 			sourceMeta.uri,
 			"-vn",
