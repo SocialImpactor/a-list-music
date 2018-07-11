@@ -6,37 +6,39 @@ import (
 	"a-list/server"
 	"a-list/transcoder"
 	"os"
-)
+	)
 
 func main() {
 	//if err != nil {
 	//	panic(err)
 	//}
 	fmt.Println("calling Transcoder")
-
-	go transcodeSomething()
+	tClient := buildTranscoderClient()
+	demoSoundTranscode(tClient)
 	// main thread ends with Server.Run
 	StartServer()
 
 }
-
-func transcodeSomething() {
-	soundFile, err := os.Open("sound-files/demo-sound/101358__edge-of-october__distress-signal.wav")
-	//soundFile, err := os.Open("434626__gis-sweden__electronic-minute-no-136-comparing-x-with-y-left-sloth-1.wav")
-	if err != nil {
+func demoSoundTranscode(tclient transcoder.TranscoderClient) {
+	jobs := make(chan transcoder.TranscodeJob)
+	tclient.TranscodeJobs = jobs
+	if soundFile, err := os.Open("sound-files/demo-sound/18210__roil-noise__circuitbent-casio-ctk-550-loop1.wav"); err == nil {
+		go tclient.NewJob(soundFile, "mp3")
+		readyJobs := <- jobs
+		fmt.Println("running jobs", readyJobs)
+		go tclient.RunJobs()
+	}  else {
 		panic(err)
-	}
-	val := &soundFile
-	fmt.Println(val)
-	defer soundFile.Close()
-	// initialize transcoder channel
-	tClient := transcoder.TranscoderClient{}
-	go transcoder.BuildTranscodeClient(&tClient)
-
-	if meta, err := tClient.NewJob(soundFile, "mp3"); err != nil {
 	}
 
 }
+func buildTranscoderClient() transcoder.TranscoderClient {
+	transcoder.InitSoundLib()
+	tClient := transcoder.TranscoderClient{}
+	go transcoder.BuildTranscoderClient(&tClient)
+	return tClient
+}
+
 func StartServer() {
 	fmt.Println("starting Server")
 	server := server.BuildServer()
