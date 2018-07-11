@@ -1,29 +1,47 @@
 package main
 
 import (
-			"fmt"
+	"fmt"
 	"github.com/kataras/iris"
 	"a-list/server"
 	"a-list/transcoder"
+	"os"
 )
-var shutdownServer bool
 
 func main() {
-	//soundFile, err := os.Open("./sound-files/dummy.wav")
 	//if err != nil {
 	//	panic(err)
 	//}
-	shutdownServer = false
 	fmt.Println("calling Transcoder")
 
-	// initialize transcoder channel
-
-	go transcoder.init()
+	go transcodeSomething()
 	// main thread ends with Server.Run
 	StartServer()
 
 }
 
+func transcodeSomething() {
+	//soundFile, err := os.Open("sound-files/demo-sound/101358__edge-of-october__distress-signal.wav")
+	soundFile, err := os.Open("434602__matdiffusion__crowd-noises-the-puppets.wav")
+	if err != nil {
+		panic(err)
+	}
+	val := &soundFile
+	fmt.Println(val)
+	defer soundFile.Close()
+	// initialize transcoder channel
+	tClient := transcoder.TranscoderClient{}
+	go transcoder.BuildTranscodeClient(&tClient)
+
+	meta, err := tClient.NewJob(soundFile, "mp3")
+
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(meta)
+
+}
 func StartServer() {
 	fmt.Println("starting Server")
 	server := server.BuildServer()
