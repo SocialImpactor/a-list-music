@@ -10,6 +10,7 @@ import (
 	"github.com/kataras/iris/core/errors"
 	"github.com/kataras/iris/core/router"
 	"strings"
+	"bytes"
 )
 
 var EncExtMap = map[string] string {
@@ -25,10 +26,10 @@ type SoundFileMeta struct {
 	size int
 }
 
-type Transcode interface {
+type Transcoder interface {
 	StoreToMediaLibrary()(SoundFileMeta, err error)
-	NewJob(file os.File, targetMime []string)(source SoundFileMeta)
-	RunTranscode()(data byte, err error)
+	NewJob(file os.File, targetMime []string)
+	RunTranscodes(jobs map[string] TranscodeJob)
 	exitChan() chan error
 }
 
@@ -43,7 +44,8 @@ type TranscodeJob struct {
 
 
 type TranscoderClient struct {
-	TranscodeJobs chan TranscodeJob
+	ReadyTranscodes chan map[string] TranscodeJob
+	Transcoded      chan map[string] TranscodeJob
 }
 
 //type TranscodesQueue struct {
@@ -65,16 +67,15 @@ func InitSoundLib() (string, error) {
 	return libDir, nil
 }
 
-func BuildTranscoderClient(transcoderClient *TranscoderClient) {
-	jobs := make(chan TranscodeJob)
-
-	client := TranscoderClient{TranscodeJobs: jobs}
+func SetClient(transcoderClient *TranscoderClient) {
+	client := TranscoderClient{}
 	if transcoderClient != nil {
 		transcoderClient = &client
 	}
 }
 
 func (c *TranscoderClient) NewJob(_file *os.File, targetEncode ...string) {
+	jobs := make(map[string] TranscodeJob)
 	fmt.Println("Adding New Job")
 	// TODO Clean up..
 
@@ -138,40 +139,39 @@ func (c *TranscoderClient) NewJob(_file *os.File, targetEncode ...string) {
 			ffmpegCMD: cmd,
 		}
 		fmt.Println("New Job Success?", job)
-		c.TranscodeJobs <- job
+
+		jobs[job.id] = job
 	}
+	c.ReadyTranscodes <- jobs
 	fmt.Println("Closing")
-	close(c.TranscodeJobs)
+	close(c.ReadyTranscodes)
 }
 
+func (c *TranscoderClient) RunTranscodes(jobs map[string] TranscodeJob) {
+	result := make(map[string] TranscodeJob)
+	for key, val := range jobs  {
+		fmt.Println("KV", key, val)
+		_out := bytes.Buffer{}
+		val.ffmpegCMD.Stdout = &_out
 
-//func TransStore() {
-//	initializeFFMPEG()
-	//exec.Command("ffmpeg", )
-	// catch STDOUT
-//}
-//
+		err := val.ffmpegCMD.Run()
+		if err != nil {
+			fmt.Println(err)
+			c.exitChan() <- err
+		}
 
-//func (c *TranscoderClient) StoreToMediaLibrary()(SoundFileMeta, err error) {
-//	todo...
-//}
+		fmt.Println("STDOUT", _out)
 
-func (c *TranscoderClient) RunJobs() (map[string] SoundFileMeta, error) {
-	result := make(map[string] SoundFileMeta)
-	for jobs := range c.TranscodeJobs {
-		_out := os.Stdout
-		jobs.ffmpegCMD.Stdout = _out
-		jobs.ffmpegCMD.Run()
-		println("STDOUT", _out)
+		// save to server or return data?
+		//result[jobs[key].id] = val
 	}
-
-	return result, nil
+	c.Transcoded <- result
+	close(c.Transcoded)
 }
 
 func (c *TranscoderClient) exitChan() chan error {
 	return c.exitChan()
 }
-
 
 func DetectEncoding(_file *os.File) (string, error) {
 	testBuffer := make([]byte, 512)
@@ -205,3 +205,14 @@ func buildFFMPEGCMD(sourceMeta SoundFileMeta, targetEncode string) *exec.Cmd {
 		return nil
 	}
 }
+
+//func TransStore() {
+//	initializeFFMPEG()
+//exec.Command("ffmpeg", )
+// catch STDOUT
+//}
+//
+
+//func (c *TranscoderClient) StoreToMediaLibrary()(SoundFileMeta, err error) {
+//	todo...
+//}
