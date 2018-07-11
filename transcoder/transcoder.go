@@ -7,10 +7,12 @@ import (
 	"net/http"
 	"fmt"
 	"io"
+			"github.com/kataras/iris/core/errors"
 )
 
 type SoundFileMeta struct {
 	id string
+	name string
 	uri string
 	encoding string
 	codex string
@@ -82,34 +84,35 @@ func (c *TranscoderClient) NewJob(_file *os.File, targetMime ...string)(SoundFil
 	if err != nil {
 		return result, err
 	}
-	libDir := string(cwd + "/sound-files" )
-
 	n, err := _file.Read(testBuffer)
 	encoding := http.DetectContentType(testBuffer[:n])
-	fmt.Println("encoding is", EncExtMap[encoding])
+	fmt.Println("encoding is", encoding)
+	if EncExtMap[encoding] == "" {
+		return result, errors.New("Encoding not indexed" + encoding)
+	}
+	result.encoding = EncExtMap[encoding]
+	result.name = string(id + "." + result.encoding)
 
-	fileExt := string(EncExtMap[encoding])
-	fileName := string("/" + id + "." + fileExt)
+	//libDir := string(cwd + "/sound-files" )
+	//err = os.Chmod(libDir, 0744)
 
-	err = os.Chmod(libDir, 755)
 	if err != nil {
 		return result, err
 	}
-	dir := string(cwd + "/sound-files" + "/" + id + "/source" + "/" + fileExt + "/")
-	result.uri = dir + fileName
-
-	err = os.MkdirAll(dir, 755)
+	dir := string(cwd + "/sound-files" + "/" + id + "/source" + "/" + result.encoding + "/")
+	result.uri = dir + result.name
+	err = os.MkdirAll(dir, 744)
 	if err != nil {
 		return result, err
 	}
-
 	_newFile, err := os.Create(result.uri)
 	if err != nil  {
-		fmt.Println(err, _newFile)
 		return result, err
 	}
+	defer _newFile.Close()
 
 	fmt.Println("about to for")
+	fmt.Println(result.uri)
 	for {
 		n, err := _file.Read(buffer)
 		if err != nil && err != io.EOF {
@@ -120,7 +123,11 @@ func (c *TranscoderClient) NewJob(_file *os.File, targetMime ...string)(SoundFil
 			return result, err
 		}
 
+		if n == 0 {
+			break
+		}
 	}
+
 	return result, nil
 }
 
