@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"fmt"
 	"github.com/kataras/iris/context"
+	"a-list-music/transcoder"
 )
 
 type AListServer interface {
@@ -20,9 +21,14 @@ func BuildServer() (server *iris.Application){
 		// load templates.
 		app.RegisterView(iris.HTML("./views", ".html"))
 
-		app.Get("/alist-service", func(context context.Context) {
-			context.ServeFile("./workers/alist-service.worker.js", false)
+		app.Get("/style-sheet", func(ctx context.Context) {
+			ctx.ServeFile("./views/main.style.css", false)
 		})
+
+		app.Get("/alist-service", func(ctx context.Context) {
+			ctx.ServeFile("./workers/alist-service.worker.js", false)
+		})
+
 		// render the ./views/index.html.
 		app.Get("/", func(ctx iris.Context) {
 			ctx.View("index.html")
@@ -64,7 +70,7 @@ type websocketController struct {
 }
 
 func (c *websocketController) onLeave(roomName string) {
-	// visits--
+	// visits
 	newCount := decrement()
 	// This will call the "visit" event on all clients, except the current one,
 	// (it can't because it's left but for any case use this type of design)
@@ -90,6 +96,23 @@ func (c *websocketController) Get( /* websocket.Connection could be lived here a
 	c.Conn.On("get_service_worker", func() {
 
 	})
-	// call it after all event callbacks registration.
+
 	c.Conn.Wait()
 }
+
+type SocketFileManager struct {
+	socketController *websocketController
+	transcodeClient *transcoder.TranscoderClient
+}
+
+func (managers SocketFileManager) FileUploader() {
+	managers.socketController.Conn.On("FileUpload::Sending", func(data []byte) {
+		fmt.Println("file received", data)
+
+
+		managers.transcodeClient.MakeTranscodeJob()
+	managers.socketController.Conn.Emit("FileUpload::Done", nil)
+	})
+	// call it after all event callbacks registration.
+}
+

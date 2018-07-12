@@ -2,45 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Music List</title>
+    <title>Admin Music List</title>
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/css/bootstrap.min.css" integrity="sha384-WskhaSGFgHYWDcbwN70/dfYBj47jz9qbsMId/iRN3ewGhXQFZCSftd1LZCfmhktB" crossorigin="anonymous">
     <link rel="stylesheet" href="/style-sheet">
 </head>
 <body>
-    <div id="MusicBoard">
-        <div class="music-board-header">
-            <h1>Title of Page</h1>
-        </div>
-        <div class="background-container">
-            <div class="listings left">
-                <div class="listing-header">
-                    <h3>Local Music List</h3>
-                </div>
-                <div class="listing-tracks">
-                    <div class="names">
-
-                    </div>
-                    <div class="track">
-
-                    </div>
-                </div>
-            </div>
-            <div class="listings right">
-                <div class="listing-header">
-                    <h3>Your Music List</h3>
-                </div>
-                <div class="listing-tracks">
-                    <div class="names">
-
-                    </div>
-                    <div class="track">
-
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="container" id="Testables">
+    <div class="container">
         <div class="row">
             <h6>Welcome to A-List Music Manager (proto)</h6>
         </div>
@@ -50,56 +17,27 @@
                     <span class="input-group-text">Upload</span>
                 </div>
                 <div class="custom-file">
-                    <input type="file" class="custom-file-input" id="inputGroupFile01" onchange="onFileSelected(evt);">
-                    <label id="" class="custom-file-label" for="inputGroupFile01">Choose file</label>
+                    <input type="file" class="custom-file-input" id="inputGroupFile01">
+                    <label class="custom-file-label" for="inputGroupFile01">Choose file</label>
                 </div>
-                <button class="btn btn-lg btn-success btn-hover btn-outline" onclick="onSubmit()">Submit</button>
             </div>
             <ul class="ul">
                 <h3>TODO</h3>
-                <li><strike>File Input - magic number auth - upload strategy</strike></li>
-                <li>Media storage</li>
+                    <li>File Input - magic number auth  - upload strategy</li>
+                    <li>Media storage</li>
                 <li>List it</li>
             </ul>
         </div>
-        <div class="row">
-            <div id="online_visitors"></div>
-        </div>
+    </div>
+    <div class="row">
+        <div id="online_visitors"></div>
     </div>
 </body>
 <script src="/websocket/iris-ws.js"></script>
 <script type="text/javascript">
-    var socket = new Ws("ws://localhost:2820/websocket");
-    var currentFile;
-    let currentFiles = {};
-
-    function onFileSelected() {
-        let sendingBusy = false;
-        currentFile = {};
-        for (let i = 0; i < files.length; i++) {
-            sendingBusy = true;
-            currentFiles[i] = files.item(i);
-        }
-    }
-
-    function onFileError() {
-
-    }
-
-    function onFileSuccess(file) {
-        currentFile = file;
-    }
-
-
-    function onSubmit() {
-        currentFiles['meta'] = {
-            clientId: localStorage.getItem("client_id")
-        };
-        socket.send('FileUpload::Sending', currentFiles);
-        console.log("handler hit");
-    }
 
     (function () {
+        var socket = new Ws("ws://localhost:2820/websocket");
 
         socket.OnConnect(function(){
             // update the rest of connected clients, including "myself" when "my" connection is 100% ready.
@@ -120,8 +58,8 @@
             document.getElementById("online_visitors").innerHTML = "you've been disconnected";
         });
     })();
-
 </script>
+
 <script>
     console.log('Initializing UI, workers and cache');
     if ('serviceWorker' in navigator) {
@@ -133,16 +71,15 @@
                     .catch(function (error) {
                         console.log('Registration failed:', error);
                     });
-
             navigator.serviceWorker.ready.then(function () {
                 console.log("wtf");
-
             });
 
             navigator.serviceWorker.addEventListener('statechange', function(evt) {
                 console.log("state change called on sw", evt);
             });
         });
+
     }
 </script>
 </html>

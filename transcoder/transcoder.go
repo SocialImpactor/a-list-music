@@ -3,15 +3,32 @@ package transcoder
 import (
 	"os"
 	"os/exec"
-	"github.com/kjk/betterguid"
 	"net/http"
 	"fmt"
-	"io"
 	"github.com/kataras/iris/core/errors"
 	"github.com/kataras/iris/core/router"
 	"strings"
 	"bytes"
+	"path"
+	"github.com/kjk/betterguid"
+	"io"
 )
+
+func CWD() string {
+	if cwd, err := os.Getwd(); err == nil {
+		return cwd
+	}
+	return "./"
+}
+
+var PermissionsCodes = map[string] int {
+	"rwxrr": 744,
+	"rwx--": 700,
+	"rwrr": 644,
+	"rw--": 600,
+	"r--": 400,
+}
+var FFMPEGPath = string(path.Join(CWD(), "..", "..", "..", "Desktop", "ffmpeg", "ffmpeg"))
 
 var EncExtMap = map[string] string {
 	"audio/wave": "wav",
@@ -21,6 +38,7 @@ type SoundFileMeta struct {
 	id string
 	name string
 	uri string
+	baseDir string
 	encoding string
 	codex string
 	size int
@@ -28,8 +46,15 @@ type SoundFileMeta struct {
 
 type Transcoder interface {
 	StoreToMediaLibrary()(SoundFileMeta, err error)
-	NewJob(file os.File, targetMime []string)
-	RunTranscodes(jobs map[string] TranscodeJob)
+	// meta is for the library IA, it relates to URLs
+	MetaBuilder(file *os.File) (SoundFileMeta)
+
+	// New Jobs set the source file...
+	NewJob(file *os.File, targetMime []string)
+
+	//
+	//RunTranscodes(jobs map[string] TranscodeJob)
+
 	ExitChan() chan error
 }
 
@@ -45,21 +70,14 @@ type TranscodeJob struct {
 type TranscoderClient struct {
 	ReadyTranscodes chan map[string] TranscodeJob
 	Transcoded      chan map[string] TranscodeJob
+	Jobs 			chan TranscodeJob
 	exitChan 		chan error
 }
 
-//type TranscodesQueue struct {
-//
-//}
-
 func InitSoundLib() (string, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "",  err
-	}
-	libDir := string(cwd + "/sound-files" )
+	libDir := string(CWD() + "/sound-files" )
 	if !router.DirectoryExists(libDir) {
-		err := os.MkdirAll(libDir, 0744)
+		err := os.MkdirAll(libDir, os.FileMode(PermissionsCodes["rw--"]))
 		if err != nil {
 			return  libDir, err
 		}
@@ -69,56 +87,57 @@ func InitSoundLib() (string, error) {
 
 func SetClient(transcoderClient *TranscoderClient) {
 	client := TranscoderClient{}
+
 	if transcoderClient != nil {
 		transcoderClient = &client
 	}
 }
 
-func (c *TranscoderClient) NewJob(_file *os.File, targetEncode ...string) {
-	jobs := make(map[string] TranscodeJob)
-	fmt.Println("Adding New Job")
-	// TODO Clean up..
+func (c TranscoderClient) ExitChan() chan error  {
+	return c.exitChan
+}
 
+func (c *TranscoderClient) MakeTranscodeJob(_file *os.File, targetEncode ...string) {
+	var err error
+	jobs := make(map[string] TranscodeJob)
 	buffer := make([]byte, 1024)
-	result := SoundFileMeta{}
 	id := betterguid.New()
 
-	// build result
-	result.id = id
-	cwd, err := os.Getwd()
+	// BUILDING RESPONSE OBJECT //
+
+	responseObj := SoundFileMeta{}
+	responseObj.id = id
+	responseObj.encoding, err = DetectEncoding(_file)
+	responseObj.name = string(id + "." + responseObj.encoding)
+	responseObj.baseDir = path.Join(CWD(), "sound-files", id)
+	dir := path.Join(CWD(), "/sound-files",  "/", id,  "/source" , "/" , responseObj.encoding, "/")
+	responseObj.uri = dir + responseObj.name
+
+	// CREATE SOURCE FILE AND FOLDERS
+
+	err = os.MkdirAll(dir, os.FileMode(PermissionsCodes["rw--"]))
+	_newFile, err := os.Create(responseObj.uri)
+
 	if err != nil {
-		c.exitChan() <- err
+		c.exitChan <- err
 	}
 
-
-	if result.encoding, err = DetectEncoding(_file); err != nil {
-		c.exitChan() <- err
-	}
-	result.name = string(id + "." + result.encoding)
-
-	dir := string(cwd + "/sound-files" + "/" + id + "/source" + "/" + result.encoding + "/")
-	result.uri = dir + result.name
-
-	// set source file and folders
-	err = os.MkdirAll(dir, 744)
-	if err != nil {
-		c.exitChan() <- err
-	}
-	_newFile, err := os.Create(result.uri)
 	if err != nil  {
-		c.exitChan() <- err
+		c.exitChan <- err
 	}
+
 	defer _newFile.Close()
 
 	// write to source file
+
 	for {
 		n, err := _file.Read(buffer)
 		if err != nil && err != io.EOF {
-			c.exitChan() <- err
+			c.exitChan <- err
 		}
 
 		if _, err := _newFile.Write(buffer[:n]); err != nil {
-			c.exitChan() <- err
+			c.exitChan <- err
 		}
 
 		if n == 0 {
@@ -126,17 +145,19 @@ func (c *TranscoderClient) NewJob(_file *os.File, targetEncode ...string) {
 		}
 	}
 
-	// build FFMPEG CMD
+	//  /BUILDING RESPONSE OBJECT //
+
+	// ATTACH FFMPEG CMD //
 	encodingCount := len(targetEncode)
 	for i := 0;  i < encodingCount; i++ {
-		cmd := buildFFMPEGCMD(result, targetEncode[i])
-		job := TranscodeJob{
-			id: result.id,
-			ready: true,
-			done: false,
-			sourceMeta: result,
+		cmd := buildFFMPEGCMD(responseObj, targetEncode[i])
+		job := TranscodeJob {
+			id:         responseObj.id,
+			ready:      true,
+			done:       false,
+			sourceMeta: responseObj,
 			targetMeta: SoundFileMeta{},
-			ffmpegCMD: cmd,
+			ffmpegCMD:  cmd,
 		}
 		fmt.Println("New Job Success?", job)
 
@@ -147,33 +168,7 @@ func (c *TranscoderClient) NewJob(_file *os.File, targetEncode ...string) {
 	close(c.ReadyTranscodes)
 }
 
-func (c *TranscoderClient) RunTranscodes(jobs map[string] TranscodeJob) {
-	result := make(map[string] TranscodeJob)
-	for key, val := range jobs  {
-		fmt.Println("KV", key, val)
-		_out := bytes.Buffer{}
-		val.ffmpegCMD.Stdout = &_out
-
-		err := val.ffmpegCMD.Run()
-		if err != nil {
-			fmt.Println(err)
-			c.exitChan <- err
-		}
-
-		fmt.Println("STDOUT", _out)
-
-		// save to server or return data?
-		//result[jobs[key].id] = val
-	}
-	c.Transcoded <- result
-	close(c.Transcoded)
-}
-
-func (c TranscoderClient) ExitChan() chan error  {
-	return c.exitChan
-}
-
-
+// Sniffs out a files encoding
 func DetectEncoding(_file *os.File) (string, error) {
 	testBuffer := make([]byte, 512)
 	n, err := _file.Read(testBuffer)
@@ -189,36 +184,60 @@ func DetectEncoding(_file *os.File) (string, error) {
 }
 
 func buildFFMPEGCMD(sourceMeta SoundFileMeta, targetEncode string) *exec.Cmd {
-	cwd, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-	switch strings.ToLower(targetEncode) {
-	case "mp3":
-		return exec.Command(
-			cwd + "/../../../homebrew/bin/ffmpeg",
 
-			"-i",
-			sourceMeta.uri,
-			"-vn",
-			"-ar 44100",
-			"-ac 2",
-			"-ab 192k",
-			"-f mp3",
-			sourceMeta.id + ".mp3",
-		)
+	switch strings.ToLower(targetEncode) {
+
+	// convert any video/audio to mp3 audio
+	case "mp3":
+		{
+			return exec.Command(
+				FFMPEGPath,
+				"-i",
+				sourceMeta.uri,
+				// removes video
+				"-vn",
+				// sets sample rate
+				"-ar 44100",
+				// something with a 2 ...
+				"-ac 2",
+				// sets stream rate
+				"-ab 192k",
+				// forces mp3 encoding
+				"-f mp3",
+				sourceMeta.id+".mp3",
+			)
+		}
+		//case "flac":
+		//case "wav":
 	default:
-		return nil
 	}
+	return nil
 }
 
-//func TransStore() {
-//	initializeFFMPEG()
-//exec.Command("ffmpeg", )
-// catch STDOUT
-//}
-//
+// this will replace the other methods, mostly a forever loop that's
+// concurrent and takes input through channels
 
-//func (c *TranscoderClient) StoreToMediaLibrary()(SoundFileMeta, err error) {
-//	todo...
-//}
+func (c *TranscoderClient)ProcessJobs() {
+
+	// range will keep going until channels is closed
+
+	for j := range c.Jobs {
+		_out := bytes.Buffer{}
+		j.ffmpegCMD.Stdout = &_out
+
+		err := j.ffmpegCMD.Start()
+
+
+		if err != nil {
+			c.exitChan <- err
+		}
+
+		err = j.ffmpegCMD.Wait()
+		if err != nil {
+			c.exitChan <- err
+		}
+
+
+
+	}
+}
