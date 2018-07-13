@@ -40,64 +40,13 @@
             </div>
         </div>
     </div>
-    <div class="container" id="Testables">
-        <div class="row">
-            <h6>Welcome to A-List Music Manager (proto)</h6>
-        </div>
-        <div class="row">
-            <div class="input-group mb-3">
-                <div class="input-group-prepend">
-                    <span class="input-group-text">Upload</span>
-                </div>
-                <div class="custom-file">
-                    <input type="file" class="custom-file-input" id="inputGroupFile01" onchange="onFileSelected(evt);">
-                    <label id="" class="custom-file-label" for="inputGroupFile01">Choose file</label>
-                </div>
-                <button class="btn btn-lg btn-success btn-hover btn-outline" onclick="onSubmit()">Submit</button>
-            </div>
-            <ul class="ul">
-                <h3>TODO</h3>
-                <li><strike>File Input - magic number auth - upload strategy</strike></li>
-                <li>Media storage</li>
-                <li>List it</li>
-            </ul>
-        </div>
-        <div class="row">
-            <div id="online_visitors"></div>
-        </div>
-    </div>
 </body>
+
 <script src="/websocket/iris-ws.js"></script>
 <script type="text/javascript">
-    var socket = new Ws("ws://localhost:2820/websocket");
-    var currentFile;
+    let socket = new Ws("ws://localhost:9004/websocket");
     let currentFiles = {};
-
-    function onFileSelected() {
-        let sendingBusy = false;
-        currentFile = {};
-        for (let i = 0; i < files.length; i++) {
-            sendingBusy = true;
-            currentFiles[i] = files.item(i);
-        }
-    }
-
-    function onFileError() {
-
-    }
-
-    function onFileSuccess(file) {
-        currentFile = file;
-    }
-
-
-    function onSubmit() {
-        currentFiles['meta'] = {
-            clientId: localStorage.getItem("client_id")
-        };
-        socket.send('FileUpload::Sending', currentFiles);
-        console.log("handler hit");
-    }
+    let fileInputBusy = false;
 
     (function () {
 
@@ -110,15 +59,18 @@
             console.log("visit websocket event with newCount of: ", newCount);
 
             var text = "1 online visitor";
+
             if (newCount > 1) {
                 text = newCount + " online visitors";
             }
+
             document.getElementById("online_visitors").innerHTML = text;
         });
 
         socket.OnDisconnect(function () {
             document.getElementById("online_visitors").innerHTML = "you've been disconnected";
         });
+
     })();
 
 </script>

@@ -2,84 +2,163 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Admin Music List</title>
+    <title>Admin Music Lists</title>
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/css/bootstrap.min.css" integrity="sha384-WskhaSGFgHYWDcbwN70/dfYBj47jz9qbsMId/iRN3ewGhXQFZCSftd1LZCfmhktB" crossorigin="anonymous">
     <link rel="stylesheet" href="/style-sheet">
 </head>
+
 <body>
-    <div class="container">
+    <div class="container-flex" id="Admin">
         <div class="row">
-            <h6>Welcome to A-List Music Manager (proto)</h6>
+            <h6>A-List Administration Panel</h6>
         </div>
         <div class="row">
-            <div class="input-group mb-3">
-                <div class="input-group-prepend">
-                    <span class="input-group-text">Upload</span>
-                </div>
-                <div class="custom-file">
-                    <input type="file" class="custom-file-input" id="inputGroupFile01">
-                    <label class="custom-file-label" for="inputGroupFile01">Choose file</label>
-                </div>
+            <div class="col-sm-2"></div>
+            <form class="form-group">
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <div class="input-group">
+                                <div class="input-group-prepend">
+                                    <span class="input-group-text">Song Title</span>
+                                </div>
+                                <input type="text" class="form-control" aria-label="Song Title" />
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <div class="input-group">
+                                <div class="input-group-prepend">
+                                    <span class="input-group-text">Song Description</span>
+                                </div>
+                                <textarea class="form-control" aria-label="Song Description" ></textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="input-group mb-3">
+                            <div class="input-group-prepend">
+                                <span class="input-group-text">Upload Song</span>
+                            </div>
+                            <div class="custom-file">
+                                <input type="file" class="custom-file-input" id="inputGroupFile01" onchange="onFileSelected()">
+                                <label id="FileInputLabel" class="custom-file-label" for="inputGroupFile01">Choose file</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <button class="btn btn-lg btn-success btn-hover btn-outline" onclick="onSubmit();">Submit</button>
+                        </div>
+                    </div>
+                </form>
+                <div class="col-sm-2"></div>
             </div>
             <ul class="ul">
                 <h3>TODO</h3>
-                    <li>File Input - magic number auth  - upload strategy</li>
-                    <li>Media storage</li>
+                <li><strike>File Input - magic number auth - upload strategy</strike></li>
+                <li>Media storage</li>
                 <li>List it</li>
             </ul>
         </div>
-    </div>
-    <div class="row">
-        <div id="online_visitors"></div>
+        <div class="row">
+            <div id="online_visitors"></div>
+        </div>
     </div>
 </body>
+
 <script src="/websocket/iris-ws.js"></script>
 <script type="text/javascript">
 
-    (function () {
-        var socket = new Ws("ws://localhost:2820/websocket");
+    let fileInputBusy = true;
+    let currentFiles = {};
+    let socket = new Ws("ws://localhost:9004/websocket");
+    const inputLabelRef = document.getElementById("FileInputLabel");
+    const inputRef = document.getElementById("inputGroupFile01");
 
-        socket.OnConnect(function(){
+    function onFileSelected() {
+        fileInputBusy = true;
+
+        currentFiles = {
+            ...currentFiles,
+            0: {
+                ...currentFiles.files[0]
+            }
+        };
+        inputLabelRef.innerText = currentFiles[0].filename;
+
+        // Input only selects 1 file, I think...
+        fileInputBusy = false;
+    }
+
+    function filesToObj(obj) {
+        for (let i = 0; i < inputRef.files.length; i++) {
+            obj[i] = inputRef.files[i];
+            i > 0
+                ? inputLabelRef.innerText.concat(" ", FileList.files[i].name)
+                : inputLabelRef.innerText.concat(FileList.files[i].name);
+            fileInputBusy = i
+                === inputRef.files.length;
+        }
+    }
+
+    function initMediaTracks() {
+        let localManifest = localStorage.getItem('aListManifest');
+            Object.keys(localManifest).forEach(track => {
+        });
+    }
+
+    function onSubmit() {
+        event.preventDefault();
+        const RoomName = "file_upload";
+
+        if (fileInputBusy) {
+            alert("Opps! Try submitting again.");
+        } else {
+            socket.join(RoomName);
+            currentFiles['meta'] = {
+                clientId: localStorage.getItem("client_id"),
+            };
+            socket.send('upload', currentFiles);
+        }
+        console.log("handler hit", currentFiles);
+    }
+
+    (function () {
+
+        socket.OnConnect(function() {
             // update the rest of connected clients, including "myself" when "my" connection is 100% ready.
             socket.Emit("visit");
         });
 
         socket.On("visit", function (newCount) {
             console.log("visit websocket event with newCount of: ", newCount);
-
             var text = "1 online visitor";
             if (newCount > 1) {
                 text = newCount + " online visitors";
             }
             document.getElementById("online_visitors").innerHTML = text;
         });
-
         socket.OnDisconnect(function () {
             document.getElementById("online_visitors").innerHTML = "you've been disconnected";
         });
     })();
-</script>
 
-<script>
-    console.log('Initializing UI, workers and cache');
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', async function () {
-            const serviceWorker = await navigator.serviceWorker
-                    .register('/alist-service', {
-                        foo: 'dataBar'
-                    })
-                    .catch(function (error) {
-                        console.log('Registration failed:', error);
-                    });
-            navigator.serviceWorker.ready.then(function () {
-                console.log("wtf");
-            });
+    function templates() {
+        return {
+            trackItem(props) {
+                return `
+                    <div class="track-item">
+                        <div class="tab">
 
-            navigator.serviceWorker.addEventListener('statechange', function(evt) {
-                console.log("state change called on sw", evt);
-            });
-        });
+                        </div>
+                        <div class="">
 
+                        </div>
+                    </div>
+                `;
+            }
+        }
     }
 </script>
 </html>

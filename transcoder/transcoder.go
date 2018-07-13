@@ -6,117 +6,86 @@ import (
 	"net/http"
 	"fmt"
 	"github.com/kataras/iris/core/errors"
-	"github.com/kataras/iris/core/router"
 	"strings"
 	"bytes"
 	"path"
 	"github.com/kjk/betterguid"
 	"io"
+	"a-list-music/utilities"
 )
 
-func CWD() string {
-	if cwd, err := os.Getwd(); err == nil {
-		return cwd
-	}
-	return "./"
-}
-
-var PermissionsCodes = map[string] int {
-	"rwxrr": 744,
-	"rwx--": 700,
-	"rwrr": 644,
-	"rw--": 600,
-	"r--": 400,
-}
-var FFMPEGPath = string(path.Join(CWD(), "..", "..", "..", "Desktop", "ffmpeg", "ffmpeg"))
+var FFMPEGPath = string(path.Join(utilities.CWD(), "..", "..", "..", "Desktop", "ffmpeg", "ffmpeg"))
 
 var EncExtMap = map[string] string {
 	"audio/wave": "wav",
 }
 
-type SoundFileMeta struct {
-	id string
-	name string
-	uri string
-	baseDir string
-	encoding string
-	codex string
-	size int
-}
-
-type Transcoder interface {
-	StoreToMediaLibrary()(SoundFileMeta, err error)
+type AListTranscoder interface {
 	// meta is for the library IA, it relates to URLs
 	MetaBuilder(file *os.File) (SoundFileMeta)
-
 	// New Jobs set the source file...
 	NewJob(file *os.File, targetMime []string)
-
-	//
-	//RunTranscodes(jobs map[string] TranscodeJob)
 
 	ExitChan() chan error
 }
 
+type SoundFileMeta struct {
+	Id        string
+	Name      string
+	URI       string
+	BaseDir   string
+	SourceDir string
+	Encoding  string
+	Codex     string
+	Size      int
+}
+
 type TranscodeJob struct {
-	id string
-	ready bool
-	done bool
-	sourceMeta SoundFileMeta
-	targetMeta SoundFileMeta
-	ffmpegCMD *exec.Cmd
+	Id         string
+	Ready      bool
+	Done       bool
+	SourceMeta SoundFileMeta
+	TargetMeta SoundFileMeta
+	FFMPEGCmd  *exec.Cmd
 }
 
-type TranscoderClient struct {
-	ReadyTranscodes chan map[string] TranscodeJob
-	Transcoded      chan map[string] TranscodeJob
-	Jobs 			chan TranscodeJob
-	exitChan 		chan error
+type TranscodeClient struct {
+	Transcode 	*AListTranscoder
+	Transcoded  *map[string] TranscodeJob
+	Jobs 		chan utilities.Action
+	exitChan 	chan error
 }
 
-func InitSoundLib() (string, error) {
-	libDir := string(CWD() + "/sound-files" )
-	if !router.DirectoryExists(libDir) {
-		err := os.MkdirAll(libDir, os.FileMode(PermissionsCodes["rw--"]))
-		if err != nil {
-			return  libDir, err
-		}
-	}
-	return libDir, nil
-}
-
-func SetClient(transcoderClient *TranscoderClient) {
-	client := TranscoderClient{}
-
+func SetClient(transcoderClient *TranscodeClient) {
+	client := TranscodeClient{}
 	if transcoderClient != nil {
 		transcoderClient = &client
 	}
 }
 
-func (c TranscoderClient) ExitChan() chan error  {
+func (c TranscodeClient) ExitChan() chan error  {
 	return c.exitChan
 }
 
-func (c *TranscoderClient) MakeTranscodeJob(_file *os.File, targetEncode ...string) {
+func (c *TranscodeClient) MakeTranscodeJob(_file *os.File, targetEncode ...string) {
 	var err error
-	jobs := make(map[string] TranscodeJob)
 	buffer := make([]byte, 1024)
 	id := betterguid.New()
 
 	// BUILDING RESPONSE OBJECT //
 
 	responseObj := SoundFileMeta{}
-	responseObj.id = id
-	responseObj.encoding, err = DetectEncoding(_file)
-	responseObj.name = string(id + "." + responseObj.encoding)
-	responseObj.baseDir = path.Join(CWD(), "sound-files", id)
-	dir := path.Join(CWD(), "/sound-files",  "/", id,  "/source" , "/" , responseObj.encoding, "/")
-	responseObj.uri = dir + responseObj.name
+	responseObj.Id = id
+	responseObj.Encoding, err = DetectEncoding(_file)
+	responseObj.Name = string(id + "." + responseObj.Encoding)
+	responseObj.BaseDir = path.Join(utilities.CWD(), "sound-files", id)
+	responseObj.SourceDir = path.Join(utilities.CWD(), "sound-files", id,  "source" , "/" , responseObj.Encoding, "/")
+	responseObj.URI = path.Join(responseObj.SourceDir,  responseObj.Name)
 
 	// CREATE SOURCE FILE AND FOLDERS
 
-	err = os.MkdirAll(dir, os.FileMode(PermissionsCodes["rw--"]))
-	_newFile, err := os.Create(responseObj.uri)
+	err = os.MkdirAll(responseObj.BaseDir, os.FileMode(utilities.PermissionsCodes["rw--"]))
+	_newFile, err := os.Create(responseObj.URI)
 
 	if err != nil {
 		c.exitChan <- err
@@ -152,20 +121,21 @@ func (c *TranscoderClient) MakeTranscodeJob(_file *os.File, targetEncode ...stri
 	for i := 0;  i < encodingCount; i++ {
 		cmd := buildFFMPEGCMD(responseObj, targetEncode[i])
 		job := TranscodeJob {
-			id:         responseObj.id,
-			ready:      true,
-			done:       false,
-			sourceMeta: responseObj,
-			targetMeta: SoundFileMeta{},
-			ffmpegCMD:  cmd,
+			Id:         responseObj.Id,
+			Ready:      true,
+			Done:       false,
+			SourceMeta: responseObj,
+			TargetMeta: SoundFileMeta{},
+			FFMPEGCmd:  cmd,
 		}
 		fmt.Println("New Job Success?", job)
+		payload := []byte(fmt.Sprintf("%v", responseObj))
+		action := utilities.Action{Type: "transcode", Payload: []byte(fmt.Sprintf("%v", payload))}
 
-		jobs[job.id] = job
+		c.Jobs <- action
 	}
-	c.ReadyTranscodes <- jobs
+
 	fmt.Println("Closing")
-	close(c.ReadyTranscodes)
 }
 
 // Sniffs out a files encoding
@@ -193,7 +163,7 @@ func buildFFMPEGCMD(sourceMeta SoundFileMeta, targetEncode string) *exec.Cmd {
 			return exec.Command(
 				FFMPEGPath,
 				"-i",
-				sourceMeta.uri,
+				sourceMeta.URI,
 				// removes video
 				"-vn",
 				// sets sample rate
@@ -204,7 +174,7 @@ func buildFFMPEGCMD(sourceMeta SoundFileMeta, targetEncode string) *exec.Cmd {
 				"-ab 192k",
 				// forces mp3 encoding
 				"-f mp3",
-				sourceMeta.id+".mp3",
+				sourceMeta.Id+".mp3",
 			)
 		}
 		//case "flac":
@@ -217,27 +187,35 @@ func buildFFMPEGCMD(sourceMeta SoundFileMeta, targetEncode string) *exec.Cmd {
 // this will replace the other methods, mostly a forever loop that's
 // concurrent and takes input through channels
 
-func (c *TranscoderClient)ProcessJobs() {
-
+func (c *TranscodeClient)ProcessJobs() {
 	// range will keep going until channels is closed
+	for action := range c.Jobs {
+		buffer := make([]byte, 1024)
+		payload := action.Payload
+		bReader := bytes.NewReader(buffer)
+		n, err := bReader.Read(payload)
 
-	for j := range c.Jobs {
-		_out := bytes.Buffer{}
-		j.ffmpegCMD.Stdout = &_out
+		_file, err := os.Create("temp")
+		for {
+			_file.Write(payload[:n])
 
-		err := j.ffmpegCMD.Start()
+		}
+		fmt.Println(_file, n)
 
+		//err := j.FFMPEGCmd.Start()
+		//utilities.ErrorHandler(err)
+		//
 
 		if err != nil {
 			c.exitChan <- err
 		}
 
-		err = j.ffmpegCMD.Wait()
+		//err = j.ffmpegCMD.Wait()
 		if err != nil {
 			c.exitChan <- err
 		}
 
-
+		fmt.Printf("This ")
 
 	}
 }

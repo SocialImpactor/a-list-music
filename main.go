@@ -2,52 +2,78 @@ package main
 
 import (
 	"fmt"
-	"github.com/kataras/iris"
-	"a-list-music/server"
 	"a-list-music/transcoder"
+	"a-list-music/store"
+	"a-list-music/utilities"
+	"github.com/kataras/iris/websocket"
+	"os"
+	"a-list-music/server"
+	"github.com/kataras/iris"
 )
 
+type Client struct {
+	*transcoder.TranscodeClient
+	*store.StoreClient
+}
+
 func main() {
-	fmt.Println("calling Transcoder")
+	var st = string("calling AListTranscoder")
+	fmt.Println(st)
 
-	// Transcoder Client
+	// AListTranscoder Client
+	_transcoderClient := initTranscoderClient()
+	_storeClient := initStoreClient()
 
-	tClient := initTranscoder()
-
-	fmt.Println(tClient)
-
-	// Library Manager
-
+	fmt.Println(_transcoderClient)
+	fmt.Println(_storeClient)
 	// ServerHandlers
 
 	StartServer()
 }
 
-func demoSoundTranscode(tclient transcoder.TranscoderClient) {
-	readyJobs := make(chan map[string] transcoder.TranscodeJob)
-	// transcoded := make(chan map[string] transcoder.TranscodeJob)
-	tclient.ReadyTranscodes = readyJobs
-}
-
-func initTranscoder() transcoder.TranscoderClient{
-	transcodeClient := transcoder.TranscoderClient{}
-	jobs := make(chan transcoder.TranscodeJob)
-	transcodeClient.Jobs = jobs
+func initTranscoderClient() transcoder.TranscodeClient {
+	action := make(chan utilities.Action)
+	transcoded := make(map[string] transcoder.TranscodeJob)
+	_t := &transcoded
+	transcodeClient := transcoder.TranscodeClient{ Transcoded: _t, }
+	transcodeClient.Jobs = action
 	go transcoder.SetClient(&transcodeClient)
 	go transcodeClient.ProcessJobs()
 	return transcodeClient
 }
 
-func buildTranscoderClient() transcoder.TranscoderClient {
-	transcoder.InitSoundLib()
-	tClient := transcoder.TranscoderClient{}
-	go transcoder.SetClient(&tClient)
-	return tClient
+func initStoreClient() *store.StoreClient {
+	store.InitSoundLib()
+	jobs :=  make(chan utilities.Action)
+	client := store.StoreClient{Jobs: jobs}
+	_client := &client
+	store.SetClient(_client)
+	client.ProcessJobs()
+	return &client
+}
+
+func fileSockets(socket websocket.Connection, client transcoder.TranscodeClient) {
+	const RoomName = "file_upload"
+
+	if socket.Join(RoomName); socket.IsJoined(RoomName) {
+			var onUpload = func(data []byte) {
+			fmt.Println("file received", data)
+
+			// todo Form Data
+
+			_file, err := os.Create("temp")
+			utilities.ErrorHandler(err)
+			_file.Write(data)
+			client.MakeTranscodeJob( _file, "mp3")
+		}
+		socket.On("upload", onUpload)
+	}
+	socket.Emit("FileUpload::Done", nil)
 }
 
 func StartServer() {
 	fmt.Println("starting Server")
 	server := server.BuildServer()
-	server.Run(iris.Addr("localhost:2824"))
+	server.Run(iris.Addr("localhost:9004"))
 }
 
