@@ -20,9 +20,15 @@ var EncExtMap = map[string] string {
 	"audio/wave": "wav",
 }
 
+var Client = func() TranscodeClient {
+	return TranscodeClient{}
+}
+
 type AListTranscoder interface {
+
 	// meta is for the library IA, it relates to URLs
 	MetaBuilder(file *os.File) (SoundFileMeta)
+
 	// New Jobs set the source file...
 	NewJob(file *os.File, targetMime []string)
 
@@ -54,13 +60,6 @@ type TranscodeClient struct {
 	Transcoded  *map[string] TranscodeJob
 	Jobs 		chan utilities.Action
 	exitChan 	chan error
-}
-
-func SetClient(transcoderClient *TranscodeClient) {
-	client := TranscodeClient{}
-	if transcoderClient != nil {
-		transcoderClient = &client
-	}
 }
 
 func (c TranscodeClient) ExitChan() chan error  {
@@ -196,6 +195,7 @@ func (c *TranscodeClient)ProcessJobs() {
 		n, err := bReader.Read(payload)
 
 		_file, err := os.Create("temp")
+
 		for {
 			_file.Write(payload[:n])
 
@@ -203,7 +203,7 @@ func (c *TranscodeClient)ProcessJobs() {
 		fmt.Println(_file, n)
 
 		//err := j.FFMPEGCmd.Start()
-		//utilities.ErrorHandler(err)
+			//utilities.ErrorHandler(err)
 		//
 
 		if err != nil {

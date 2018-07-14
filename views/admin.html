@@ -14,7 +14,7 @@
         </div>
         <div class="row">
             <div class="col-sm-2"></div>
-            <form class="form-group">
+                <form class="form-group">
                     <div class="row">
                         <div class="col-sm-12">
                             <div class="input-group">
@@ -70,19 +70,24 @@
 <script src="/websocket/iris-ws.js"></script>
 <script type="text/javascript">
 
+    const socket = new Ws("ws://localhost:8888/websocket");
     let fileInputBusy = true;
     let currentFiles = {};
-    let socket = new Ws("ws://localhost:9004/websocket");
+
     const inputLabelRef = document.getElementById("FileInputLabel");
     const inputRef = document.getElementById("inputGroupFile01");
 
     function onFileSelected() {
+        if (!inputRef && !inputRef.files) {
+            return;
+        }
+
         fileInputBusy = true;
 
         currentFiles = {
             ...currentFiles,
             0: {
-                ...currentFiles.files[0]
+                ...inputRef.files[0]
             }
         };
         inputLabelRef.innerText = currentFiles[0].filename;
@@ -108,24 +113,25 @@
         });
     }
 
-    function onSubmit() {
-        event.preventDefault();
+    function onSubmit(evt) {
+        evt.preventDefault();
         const RoomName = "file_upload";
 
         if (fileInputBusy) {
             alert("Opps! Try submitting again.");
         } else {
-            socket.join(RoomName);
-            currentFiles['meta'] = {
-                clientId: localStorage.getItem("client_id"),
-            };
-            socket.send('upload', currentFiles);
+            console.log(socket);
+            socket.On(RoomName, function() {
+                currentFiles['meta'] = {
+                    clientId: localStorage.getItem("client_id"),
+                };
+                socket.Emit('upload', currentFiles);
+            });
         }
         console.log("handler hit", currentFiles);
     }
 
     (function () {
-
         socket.OnConnect(function() {
             // update the rest of connected clients, including "myself" when "my" connection is 100% ready.
             socket.Emit("visit");
@@ -142,6 +148,7 @@
         socket.OnDisconnect(function () {
             document.getElementById("online_visitors").innerHTML = "you've been disconnected";
         });
+
     })();
 
     function templates() {
@@ -152,8 +159,10 @@
                         <div class="tab">
 
                         </div>
-                        <div class="">
+                        <div class="info-top">
 
+                        </div>
+                        <div class="info-bottom>
                         </div>
                     </div>
                 `;

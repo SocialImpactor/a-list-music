@@ -78,7 +78,10 @@
     console.log('Initializing UI, workers and cache');
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', async function () {
-            const serviceWorker = await navigator.serviceWorker
+            // todo test for initial and installed
+            let serviceWorker = navigator.serviceWorker;
+
+            const registration = await navigator.serviceWorker
                     .register('/alist-service', {
                         foo: 'dataBar'
                     })
@@ -86,15 +89,25 @@
                         console.log('Registration failed:', error);
                     });
 
-            navigator.serviceWorker.ready.then(function () {
-                console.log("wtf");
+            navigator.serviceWorker.ready.then(function (evt) {
+                console.log("wtf", evt);
 
             });
 
-            navigator.serviceWorker.addEventListener('statechange', function(evt) {
-                console.log("state change called on sw", evt);
-            });
+            registration.onstatechange = function (evt) {
+                if (evt === "active") {
+                    serviceWorker = registration.;
+                }
+                if (evt === "waiting") {
+                    serviceWorker = registration.waiting;
+                }
+                if (evt === "installing") {
+                    serviceWorker = registration.installing;
+                }
+            }
         });
+
+
     }
 </script>
 </html>

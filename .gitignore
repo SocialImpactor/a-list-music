@@ -6,3 +6,7 @@ local*
 sound-files\
 sound-files
 *.wav
+*.cert
+*.key
+*.csr
+serial.txt

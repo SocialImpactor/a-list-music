@@ -1,19 +1,29 @@
 package store
 
+//noinspection GoInvalidPackageImport
+
 import (
 	"os"
 	"time"
 	"path"
 	"github.com/kataras/iris/core/router"
-		"encoding/json"
+	"encoding/json"
 	"a-list-music/utilities"
-	)
+)
+
+var JobsChan chan utilities.Action
+var Client = func() StoreClient {
+	return StoreClient{
+		JobsChan,
+	}
+}
 
 var StoreBasePath = path.Join(utilities.CWD(), "sound-files")
+
 var errorH = utilities.ErrorHandler
 
 type Manifest struct {
-	entries map[string]ManifestEntry
+	entries map[string] ManifestEntry
 }
 
 type ManifestOptions struct {
@@ -31,12 +41,11 @@ type ManifestEntry struct {
 func withManifest(options ManifestOptions) {
 	buffer := make([]byte, 1024)
 	manifest := Manifest{}
-
 	_manifest, err := os.OpenFile(
 		path.Join(StoreBasePath, "store_manifest.json"),
 		os.O_WRONLY,
 		os.FileMode(utilities.PermissionsCodes["rw--"]))
-	errorH(err)
+		errorH(err)
 	defer func() {
 		jBuff := make([]byte, 1024)
 		jByte, err := json.Marshal(jBuff)
@@ -55,8 +64,6 @@ func withManifest(options ManifestOptions) {
 	for i := 0; i < len(removals); i++ {
 		delete(manifest.entries, removals[i].Id)
 	}
-
-
 }
 
 type FileMeta struct {
@@ -99,10 +106,10 @@ func InitSoundLib() (string, error) {
 	return libDir, nil
 }
 
-func SetClient(_client *StoreClient) {
+func InitClient() (*StoreClient) {
 	jobC := make(chan utilities.Action)
 	storeClient := StoreClient{Jobs: jobC}
-	_client = &storeClient
+	return &storeClient
 }
 
 func (client *StoreClient) ProcessJobs() {
